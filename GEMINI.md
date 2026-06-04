@@ -16,10 +16,16 @@ OpenAI-compatible local gateway for OpenAI Codex OAuth. This project acts as a b
 ## Building and Running
 
 ### Installation
+From source:
 ```bash
 pip install -e .
 # Or with dev dependencies
 pip install -e ".[dev]"
+```
+
+Or directly from GitHub:
+```bash
+pip install git+https://github.com/flyzstu/codex-bridge.git
 ```
 
 ### Authentication

@@ -12,8 +12,14 @@ The gateway is intentionally small. It converts Chat Completions messages to Cod
 
 ## Install
 
+From source:
 ```bash
 pip install -e .
+```
+
+Or directly from GitHub:
+```bash
+pip install git+https://github.com/flyzstu/codex-bridge.git
 ```
 
 ## Login
