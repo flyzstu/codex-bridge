@@ -75,6 +75,18 @@ curl -N http://127.0.0.1:8000/v1/chat/completions \
   -d '{"stream":true,"messages":[{"role":"user","content":"hello"}]}'
 ```
 
+## Systemd Support
+
+You can generate or write a systemd service file dynamically for the gateway. It will automatically detect your current virtual environment's executable path, user, group, and working directory:
+
+```bash
+# Print systemd service file to stdout
+codex-bridge systemd
+
+# Write directly to systemd directory (requires sudo)
+sudo env PATH=$PATH codex-bridge systemd --write
+```
+
 ## Testing
 
 ```bash

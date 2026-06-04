@@ -431,3 +431,16 @@ async def test_request_logs_include_prompt_in_debug_mode(test_client) -> None:
     assert "Chat completion payload: request_id=" in rendered
     assert "Codex request body:" in rendered
     assert "secret prompt" in rendered
+
+
+def test_systemd_command() -> None:
+    from typer.testing import CliRunner
+    from codex_bridge.cli import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["systemd", "--host", "127.0.0.1", "--port", "9000"])
+    assert result.exit_code == 0
+    assert "[Unit]" in result.stdout
+    assert "[Service]" in result.stdout
+    assert "serve --host 127.0.0.1 --port 9000" in result.stdout
+

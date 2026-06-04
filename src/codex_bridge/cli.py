@@ -90,3 +90,81 @@ def serve(
         settings.log_level,
     )
     web.run_app(create_app(settings=settings), host=settings.host, port=settings.port, print=None)
+
+
+@app.command()
+def systemd(
+    user: str = typer.Option(
+        None, help="User to run the service as. Defaults to the current user."
+    ),
+    group: str = typer.Option(
+        None, help="Group to run the service as. Defaults to the current group."
+    ),
+    host: str = typer.Option(
+        "127.0.0.1", help="Host for the service to bind to."
+    ),
+    port: int = typer.Option(
+        8000, help="Port for the service to bind to."
+    ),
+    write: bool = typer.Option(
+        False,
+        help="Write the file directly to /etc/systemd/system/codex-bridge.service (requires sudo).",
+    ),
+) -> None:
+    """Generate or install a systemd service unit file for codex-bridge."""
+    import getpass
+    import shutil
+
+    executable = shutil.which("codex-bridge")
+    if not executable:
+        executable = sys.argv[0]
+        executable = os.path.abspath(executable)
+
+    resolved_user = user or getpass.getuser()
+
+    resolved_group = group
+    if not resolved_group:
+        try:
+            import grp
+
+            resolved_group = grp.getgrgid(os.getgid()).gr_name
+        except Exception:
+            resolved_group = resolved_user
+
+    service_content = f"""[Unit]
+Description=codex-bridge - OpenAI-compatible gateway for Codex OAuth
+After=network.target
+
+[Service]
+Type=simple
+User={resolved_user}
+Group={resolved_group}
+WorkingDirectory={os.getcwd()}
+ExecStart={executable} serve --host {host} --port {port}
+Restart=always
+RestartSec=5
+Environment=PATH={os.environ.get('PATH', '/usr/bin:/bin')}
+
+[Install]
+WantedBy=multi-user.target
+"""
+    if write:
+        service_path = "/etc/systemd/system/codex-bridge.service"
+        try:
+            with open(service_path, "w") as f:
+                f.write(service_content)
+            logger.info(f"Successfully wrote systemd unit to {service_path}")
+            logger.info("To enable and start the service, run:")
+            logger.info("  sudo systemctl daemon-reload")
+            logger.info("  sudo systemctl enable --now codex-bridge")
+        except PermissionError as exc:
+            logger.error(
+                f"Permission denied: cannot write to {service_path}. Try running with sudo."
+            )
+            raise typer.Exit(1) from exc
+        except Exception as exc:
+            logger.error(f"Failed to write service file: {exc}")
+            raise typer.Exit(1) from exc
+    else:
+        typer.echo(service_content)
+

@@ -38,6 +38,15 @@ codex-bridge login
 codex-bridge serve --host 127.0.0.1 --port 8000
 ```
 
+### Systemd Support
+```bash
+# Print systemd unit file
+codex-bridge systemd
+
+# Install systemd unit file (requires sudo)
+sudo env PATH=$PATH codex-bridge systemd --write
+```
+
 ### Testing
 ```bash
 pytest
