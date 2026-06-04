@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import httpx
 import pytest
@@ -9,10 +10,18 @@ from loguru import logger
 
 from codex_openai_api.auth import CodexToken
 from codex_openai_api.codex import CodexClient, build_codex_body, iter_sse
+from codex_openai_api.config import Settings
 from codex_openai_api.conversion import convert_messages, strip_model_prefix
 from codex_openai_api.server import create_app
 
 DEFAULT_MODEL = "openai-codex/gpt-5.1-codex"
+
+
+def _settings(**overrides: object) -> Settings:
+    """Create a Settings instance with sensible test defaults."""
+    defaults: dict[str, object] = {"default_model": DEFAULT_MODEL}
+    defaults.update(overrides)
+    return Settings(**defaults)  # type: ignore[arg-type]
 
 
 def sse(*events: dict[str, object]) -> bytes:
@@ -23,16 +32,21 @@ def token_provider() -> CodexToken:
     return CodexToken(account_id="acct-test", access="token-test")
 
 
-def client_for(handler) -> CodexClient:
-    return CodexClient(token_provider=token_provider, transport=httpx.MockTransport(handler))
+def client_for(handler, **settings_kw: object) -> CodexClient:
+    return CodexClient(
+        settings=_settings(**settings_kw),
+        token_provider=token_provider,
+        transport=httpx.MockTransport(handler),
+    )
 
 
 @pytest.fixture
 async def test_client():
     clients: list[TestClient] = []
 
-    async def factory(codex_client: CodexClient) -> TestClient:
-        app = create_app(default_model=DEFAULT_MODEL, codex_client=codex_client)
+    async def factory(codex_client: CodexClient, **settings_kw: object) -> TestClient:
+        settings = _settings(**settings_kw)
+        app = create_app(settings=settings, codex_client=codex_client)
         client = TestClient(TestServer(app))
         await client.start_server()
         clients.append(client)
@@ -77,7 +91,11 @@ def test_model_prefix_is_stripped() -> None:
 
 
 async def test_missing_token_returns_401(test_client) -> None:
-    codex_client = CodexClient(token_provider=lambda: None, transport=httpx.MockTransport(lambda request: None))
+    codex_client = CodexClient(
+        settings=_settings(),
+        token_provider=lambda: None,
+        transport=httpx.MockTransport(lambda request: None),
+    )
     client = await test_client(codex_client)
 
     response = await client.post("/v1/chat/completions", json={
@@ -119,6 +137,29 @@ async def test_models_endpoint_uses_openai_models(test_client) -> None:
     assert response.status == 200
     payload = await response.json()
     assert [model["id"] for model in payload["data"]] == ["gpt-5.1", "gpt-5.1-codex"]
+
+
+async def test_models_endpoint_returns_configured_models(test_client) -> None:
+    """When settings.models is configured, /v1/models returns that list without calling upstream."""
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        return httpx.Response(200, json={"object": "list", "data": []})
+
+    configured_models = ["model-a", "model-b", "model-c"]
+    client = await test_client(
+        client_for(handler, models=configured_models),
+        models=configured_models,
+    )
+
+    response = await client.get("/v1/models")
+
+    assert response.status == 200
+    payload = await response.json()
+    assert [m["id"] for m in payload["data"]] == configured_models
+    assert call_count == 0  # upstream was never called
 
 
 async def test_non_streaming_codex_sse_aggregates_to_chat_completion(test_client) -> None:
@@ -253,6 +294,70 @@ async def test_timeout_maps_to_504(test_client) -> None:
     })
 
     assert response.status == 504
+
+
+async def test_dynamic_model_switching(test_client) -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, content=sse(
+            {"type": "response.output_text.delta", "delta": "ok"},
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ))
+
+    client = await test_client(client_for(handler))
+
+    # Request with a custom model name
+    response = await client.post("/v1/chat/completions", json={
+        "model": "my-custom-model",
+        "messages": [{"role": "user", "content": "hi"}],
+    })
+    assert response.status == 200
+    payload = await response.json()
+    assert payload["model"] == "my-custom-model"
+    assert captured["body"]["model"] == "my-custom-model"
+
+    # Request with a prefixed model name
+    response = await client.post("/v1/chat/completions", json={
+        "model": "openai-codex/gpt-5.1-codex",
+        "messages": [{"role": "user", "content": "hi"}],
+    })
+    assert response.status == 200
+    payload = await response.json()
+    assert payload["model"] == "openai-codex/gpt-5.1-codex"
+    assert captured["body"]["model"] == "gpt-5.1-codex"
+
+
+async def test_unsupported_model_returns_400(test_client) -> None:
+    """When models are configured, requesting an unlisted model returns 400."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=sse(
+            {"type": "response.output_text.delta", "delta": "ok"},
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ))
+
+    configured_models = ["model-a", "model-b"]
+    client = await test_client(
+        client_for(handler, models=configured_models),
+        models=configured_models,
+    )
+
+    # Unsupported model → 400
+    response = await client.post("/v1/chat/completions", json={
+        "model": "model-unknown",
+        "messages": [{"role": "user", "content": "hi"}],
+    })
+    assert response.status == 400
+    payload = await response.json()
+    assert "not supported" in payload["error"]["message"]
+
+    # Supported model → 200
+    response = await client.post("/v1/chat/completions", json={
+        "model": "model-a",
+        "messages": [{"role": "user", "content": "hi"}],
+    })
+    assert response.status == 200
 
 
 async def test_logs_do_not_include_prompt_or_token() -> None:

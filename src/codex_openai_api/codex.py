@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
@@ -15,12 +14,8 @@ import json_repair
 from loguru import logger
 
 from .auth import CodexToken
+from .config import DEFAULT_ORIGINATOR, Settings
 from .conversion import build_reasoning_options, convert_messages, convert_tools, strip_model_prefix
-
-DEFAULT_CODEX_URL = "https://chatgpt.com/backend-api/codex/responses"
-DEFAULT_MODELS_URL = "https://api.openai.com/v1/models"
-DEFAULT_MODEL = "openai-codex/gpt-5.1-codex"
-DEFAULT_ORIGINATOR = "nanobot"
 
 
 @dataclass
@@ -46,23 +41,23 @@ class CodexAPIError(RuntimeError):
         self.retry_after = retry_after
 
 
-def build_headers(token: CodexToken) -> dict[str, str]:
+def build_headers(token: CodexToken, originator: str = DEFAULT_ORIGINATOR) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {token.access}",
         "chatgpt-account-id": token.account_id,
         "OpenAI-Beta": "responses=experimental",
-        "originator": DEFAULT_ORIGINATOR,
+        "originator": originator,
         "User-Agent": "codex-openai-api (python)",
         "accept": "text/event-stream",
         "content-type": "application/json",
     }
 
 
-def build_models_headers(token: CodexToken) -> dict[str, str]:
+def build_models_headers(token: CodexToken, originator: str = DEFAULT_ORIGINATOR) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {token.access}",
         "OpenAI-Beta": "responses=experimental",
-        "originator": DEFAULT_ORIGINATOR,
+        "originator": originator,
         "User-Agent": "codex-openai-api (python)",
         "accept": "application/json",
     }
@@ -97,29 +92,33 @@ class CodexClient:
     def __init__(
         self,
         *,
-        url: str = DEFAULT_CODEX_URL,
-        models_url: str = DEFAULT_MODELS_URL,
+        settings: Settings,
         token_provider: Callable[[], CodexToken | None],
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        self.url = url
-        self.models_url = models_url
+        self._settings = settings
         self.token_provider = token_provider
-        self.transport = transport
+        self._client = httpx.AsyncClient(transport=transport)
+
+    async def aclose(self) -> None:
+        """Close the underlying HTTP connection pool."""
+        await self._client.aclose()
 
     async def list_models(self) -> list[str]:
         token = await asyncio.to_thread(self.token_provider)
         if token is None:
             raise CodexAPIError("Codex OAuth token unavailable. Run `codex-openai-api login`.", 401)
 
-        timeout = float(os.environ.get("CODEX_MODELS_TIMEOUT_S", "10"))
-        async with httpx.AsyncClient(timeout=timeout, transport=self.transport) as client:
-            try:
-                response = await client.get(self.models_url, headers=build_models_headers(token))
-            except httpx.TimeoutException as exc:
-                raise CodexAPIError("OpenAI models request timed out", 504) from exc
-            except httpx.TransportError as exc:
-                raise CodexAPIError("OpenAI models request failed", 503) from exc
+        try:
+            response = await self._client.get(
+                self._settings.models_url,
+                headers=build_models_headers(token, self._settings.originator),
+                timeout=self._settings.models_timeout,
+            )
+        except httpx.TimeoutException as exc:
+            raise CodexAPIError("OpenAI models request timed out", 504) from exc
+        except httpx.TransportError as exc:
+            raise CodexAPIError("OpenAI models request failed", 503) from exc
 
         if response.status_code != 200:
             await response.aread()
@@ -141,23 +140,27 @@ class CodexClient:
         if token is None:
             raise CodexAPIError("Codex OAuth token unavailable. Run `codex-openai-api login`.", 401)
 
-        timeout = float(os.environ.get("CODEX_STREAM_IDLE_TIMEOUT_S", "90"))
-        async with httpx.AsyncClient(timeout=timeout, transport=self.transport) as client:
-            try:
-                async with client.stream("POST", self.url, headers=build_headers(token), json=body) as response:
-                    if response.status_code != 200:
-                        await response.aread()
-                        raise CodexAPIError(
-                            f"Codex API request failed with HTTP {response.status_code}",
-                            response.status_code,
-                            response.headers.get("retry-after"),
-                        )
-                    async for event in iter_sse(response):
-                        yield event
-            except httpx.TimeoutException as exc:
-                raise CodexAPIError("Codex API request timed out", 504) from exc
-            except httpx.TransportError as exc:
-                raise CodexAPIError("Codex API transport failed", 503) from exc
+        try:
+            async with self._client.stream(
+                "POST",
+                self._settings.codex_url,
+                headers=build_headers(token, self._settings.originator),
+                json=body,
+                timeout=self._settings.stream_idle_timeout,
+            ) as response:
+                if response.status_code != 200:
+                    await response.aread()
+                    raise CodexAPIError(
+                        f"Codex API request failed with HTTP {response.status_code}",
+                        response.status_code,
+                        response.headers.get("retry-after"),
+                    )
+                async for event in iter_sse(response):
+                    yield event
+        except httpx.TimeoutException as exc:
+            raise CodexAPIError("Codex API request timed out", 504) from exc
+        except httpx.TransportError as exc:
+            raise CodexAPIError("Codex API transport failed", 503) from exc
 
     async def complete(self, body: dict[str, Any]) -> CodexResult:
         result = CodexResult()

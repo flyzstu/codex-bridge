@@ -28,19 +28,33 @@ codex-openai-api login
 codex-openai-api serve --host 127.0.0.1 --port 8000
 ```
 
-Environment defaults:
+### Specifying supported models
 
-- `CODEX_API_HOST`
-- `CODEX_API_PORT`
-- `CODEX_API_MODEL` fallback model when model discovery is unavailable
-- `CODEX_STREAM_IDLE_TIMEOUT_S`
-- `CODEX_MODELS_TIMEOUT_S`
+Pass `--models` with a comma-separated list to restrict the gateway to a fixed set of models.
+When configured, `/v1/models` returns this list directly (no upstream API call) and requests
+for unlisted models are rejected with `400 Bad Request`.
 
-`GET /v1/models` fetches the model list from OpenAI using the Codex OAuth token. If model
-discovery fails, the server still returns the fallback model so OpenAI-compatible clients can
-continue to start.
+```bash
+codex-openai-api serve --models "gpt-5.1-codex,gpt-5.1,o3-pro"
+```
 
-## Curl
+If `--models` is omitted, the gateway discovers available models from the OpenAI API at
+runtime and falls back to the default model when discovery fails.
+
+## Configuration
+
+All settings can be provided via environment variables or CLI flags. CLI flags take precedence.
+
+| Environment Variable | CLI Flag | Default | Description |
+|---|---|---|---|
+| `CODEX_API_HOST` | `--host` | `127.0.0.1` | Bind host |
+| `CODEX_API_PORT` | `--port` | `8000` | Bind port |
+| `CODEX_API_MODEL` | `--model` | `openai-codex/gpt-5.1-codex` | Default / fallback model |
+| `CODEX_API_MODELS` | `--models` | *(empty)* | Comma-separated supported model list |
+| `CODEX_STREAM_IDLE_TIMEOUT_S` | — | `90` | Idle timeout for streaming (seconds) |
+| `CODEX_MODELS_TIMEOUT_S` | — | `10` | Timeout for model discovery (seconds) |
+
+## Usage
 
 ```bash
 curl http://127.0.0.1:8000/v1/chat/completions \
@@ -54,4 +68,11 @@ Streaming:
 curl -N http://127.0.0.1:8000/v1/chat/completions \
   -H 'content-type: application/json' \
   -d '{"stream":true,"messages":[{"role":"user","content":"hello"}]}'
+```
+
+## Testing
+
+```bash
+pip install -e ".[dev]"
+pytest
 ```

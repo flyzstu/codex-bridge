@@ -21,24 +21,32 @@ from .codex import (
     build_codex_body,
     make_completion_id,
 )
+from .config import Settings
 from .conversion import validate_messages
 
-DEFAULT_MODEL_KEY = web.AppKey("default_model", str)
+SETTINGS_KEY = web.AppKey("settings", Settings)
 CODEX_CLIENT_KEY = web.AppKey("codex_client", CodexClient)
 
 
 def create_app(
     *,
-    default_model: str,
+    settings: Settings,
     codex_client: CodexClient | None = None,
 ) -> web.Application:
     app = web.Application(middlewares=[request_logging_middleware])
-    app[DEFAULT_MODEL_KEY] = default_model
-    app[CODEX_CLIENT_KEY] = codex_client or CodexClient(token_provider=load_token)
+    app[SETTINGS_KEY] = settings
+    app[CODEX_CLIENT_KEY] = codex_client or CodexClient(
+        settings=settings, token_provider=load_token
+    )
     app.router.add_get("/health", health)
     app.router.add_get("/v1/models", models)
     app.router.add_post("/v1/chat/completions", chat_completions)
+    app.on_cleanup.append(_cleanup)
     return app
+
+
+async def _cleanup(app: web.Application) -> None:
+    await app[CODEX_CLIENT_KEY].aclose()
 
 
 @web.middleware
@@ -84,26 +92,31 @@ async def health(request: web.Request) -> web.Response:
 
 
 async def models(request: web.Request) -> web.Response:
-    default_model = request.app[DEFAULT_MODEL_KEY]
+    settings = request.app[SETTINGS_KEY]
     client = request.app[CODEX_CLIENT_KEY]
     now = int(time.time())
-    try:
-        models = await client.list_models()
-    except CodexAPIError as exc:
-        logger.warning(
-            "OpenAI model discovery failed: request_id={} status={} fallback_model={}",
-            request.get("request_id", "-"),
-            exc.status_code,
-            default_model,
-        )
-        models = [default_model]
-    if not models:
-        models = [default_model]
+
+    if settings.models:
+        model_list = list(settings.models)
+    else:
+        try:
+            model_list = await client.list_models()
+        except CodexAPIError as exc:
+            logger.warning(
+                "OpenAI model discovery failed: request_id={} status={} fallback_model={}",
+                request.get("request_id", "-"),
+                exc.status_code,
+                settings.default_model,
+            )
+            model_list = [settings.default_model]
+        if not model_list:
+            model_list = [settings.default_model]
+
     return web.json_response({
         "object": "list",
         "data": [
             {"id": model, "object": "model", "created": now, "owned_by": "openai"}
-            for model in models
+            for model in model_list
         ],
     })
 
@@ -119,7 +132,15 @@ async def chat_completions(request: web.Request) -> web.StreamResponse:
     except Exception:
         return error_response("invalid JSON request body", 400)
 
-    model = str(payload.get("model") or request.app[DEFAULT_MODEL_KEY])
+    settings = request.app[SETTINGS_KEY]
+    model = str(payload.get("model") or settings.default_model)
+
+    # Validate model against the configured list when available.
+    if settings.models and model not in settings.models:
+        return error_response(
+            f"model '{model}' is not supported; available models: {settings.models}", 400
+        )
+
     logger.info(
         "Chat completion request: request_id={} model={} stream={} messages={} tools={}",
         request.get("request_id", "-"),
@@ -129,7 +150,7 @@ async def chat_completions(request: web.Request) -> web.StreamResponse:
         len(payload.get("tools") or []),
     )
     try:
-        body = build_codex_body(payload, request.app[DEFAULT_MODEL_KEY])
+        body = build_codex_body(payload, settings.default_model)
         if bool(payload.get("stream")):
             return await stream_chat_completion(request, body, model)
         return await complete_chat_completion(request, body, model)
