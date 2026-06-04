@@ -56,11 +56,11 @@ def serve(
     port: int = typer.Option(
         int(os.environ.get("CODEX_API_PORT", "8000")), help="Bind port."
     ),
-    model: str = typer.Option(
-        os.environ.get("CODEX_API_MODEL", DEFAULT_MODEL), help="Default model."
+    model: str | None = typer.Option(
+        None, help="Default model. If not specified, defaults to the first model in --models."
     ),
-    models: str = typer.Option(
-        os.environ.get("CODEX_API_MODELS", ""),
+    models: str | None = typer.Option(
+        None,
         help="Comma-separated list of supported model IDs. "
         "When set, /v1/models returns this list and requests for unlisted models are rejected.",
     ),
@@ -73,12 +73,12 @@ def serve(
     log_level = "DEBUG" if debug else os.environ.get("CODEX_LOG_LEVEL", "INFO").upper()
     _configure_logging(log_level)
 
-    model_list = [m.strip() for m in models.split(",") if m.strip()] if models else []
+    model_list = [m.strip() for m in models.split(",") if m.strip()] if models is not None else None
     settings = Settings.from_env(
         host=host,
         port=port,
         default_model=model,
-        models=model_list or None,
+        models=model_list,
         log_level=log_level,
     )
     logger.info(
