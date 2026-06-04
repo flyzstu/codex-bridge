@@ -14,7 +14,7 @@ from codex_bridge.config import Settings
 from codex_bridge.conversion import convert_messages, strip_model_prefix
 from codex_bridge.server import create_app
 
-DEFAULT_MODEL = "openai-codex/gpt-5.1-codex"
+DEFAULT_MODEL = "gpt-5.5"
 
 
 def _settings(**overrides: object) -> Settings:
@@ -85,9 +85,9 @@ def test_multi_message_conversion_preserves_order() -> None:
 
 
 def test_model_prefix_is_stripped() -> None:
-    assert strip_model_prefix(DEFAULT_MODEL) == "gpt-5.1-codex"
+    assert strip_model_prefix("openai-codex/gpt-5.5") == "gpt-5.5"
     body = build_codex_body({"model": DEFAULT_MODEL, "messages": [{"role": "user", "content": "hi"}]}, DEFAULT_MODEL)
-    assert body["model"] == "gpt-5.1-codex"
+    assert body["model"] == "gpt-5.5"
 
 
 async def test_missing_token_returns_401(test_client) -> None:
@@ -130,7 +130,7 @@ async def test_models_endpoint_uses_openai_models(test_client) -> None:
             ],
         })
 
-    client = await test_client(client_for(handler))
+    client = await test_client(client_for(handler, models=[]), models=[])
 
     response = await client.get("/v1/models")
 
@@ -193,7 +193,7 @@ async def test_non_streaming_codex_sse_aggregates_to_chat_completion(test_client
     assert payload["choices"][0]["message"]["content"] == "hello"
     assert payload["choices"][0]["finish_reason"] == "stop"
     assert payload["usage"]["total_tokens"] == 5
-    assert captured["body"]["model"] == "gpt-5.1-codex"
+    assert captured["body"]["model"] == "gpt-5.5"
     assert [item.get("role") or item.get("type") for item in captured["body"]["input"]] == [
         "user",
         "assistant",
@@ -306,7 +306,7 @@ async def test_dynamic_model_switching(test_client) -> None:
             {"type": "response.completed", "response": {"status": "completed"}},
         ))
 
-    client = await test_client(client_for(handler))
+    client = await test_client(client_for(handler, models=[]), models=[])
 
     # Request with a custom model name
     response = await client.post("/v1/chat/completions", json={
@@ -398,7 +398,7 @@ async def test_request_logs_include_metadata_without_prompt(test_client) -> None
     rendered = "\n".join(logs)
     assert "HTTP request:" in rendered
     assert "Chat completion request:" in rendered
-    assert "model=openai-codex/gpt-5.1-codex" in rendered
+    assert "model=gpt-5.5" in rendered
     assert "messages=1" in rendered
     assert "secret prompt" not in rendered
 
@@ -426,7 +426,7 @@ async def test_request_logs_include_prompt_in_debug_mode(test_client) -> None:
     rendered = "\n".join(logs)
     assert "HTTP request:" in rendered
     assert "Chat completion request:" in rendered
-    assert "model=openai-codex/gpt-5.1-codex" in rendered
+    assert "model=gpt-5.5" in rendered
     assert "messages=1" in rendered
     assert "Chat completion payload: request_id=" in rendered
     assert "Codex request body:" in rendered

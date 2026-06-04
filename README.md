@@ -35,11 +35,10 @@ When configured, `/v1/models` returns this list directly (no upstream API call) 
 for unlisted models are rejected with `400 Bad Request`.
 
 ```bash
-codex-bridge serve --models "gpt-5.1-codex,gpt-5.1,o3-pro"
+codex-bridge serve --models "gpt-5.5,gpt-5.4,gpt-5.4-mini"
 ```
 
-If `--models` is omitted, the gateway discovers available models from the OpenAI API at
-runtime and falls back to the default model when discovery fails.
+If `--models` is omitted, the gateway defaults to supporting `gpt-5.5`, `gpt-5.4`, and `gpt-5.4-mini`.
 
 ## Configuration
 
@@ -49,8 +48,8 @@ All settings can be provided via environment variables or CLI flags. CLI flags t
 |---|---|---|---|
 | `CODEX_API_HOST` | `--host` | `127.0.0.1` | Bind host |
 | `CODEX_API_PORT` | `--port` | `8000` | Bind port |
-| `CODEX_API_MODEL` | `--model` | `openai-codex/gpt-5.1-codex` | Default / fallback model |
-| `CODEX_API_MODELS` | `--models` | *(empty)* | Comma-separated supported model list |
+| `CODEX_API_MODEL` | `--model` | `gpt-5.5` | Default / fallback model |
+| `CODEX_API_MODELS` | `--models` | `gpt-5.5,gpt-5.4,gpt-5.4-mini` | Comma-separated supported model list |
 | `CODEX_STREAM_IDLE_TIMEOUT_S` | — | `90` | Idle timeout for streaming (seconds) |
 | `CODEX_MODELS_TIMEOUT_S` | — | `10` | Timeout for model discovery (seconds) |
 

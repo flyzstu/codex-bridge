@@ -50,7 +50,7 @@ pytest
 - **Environment Variables:**
   - `CODEX_API_HOST`: Bind host (default: `127.0.0.1`).
   - `CODEX_API_PORT`: Bind port (default: `8000`).
-  - `CODEX_API_MODEL`: Fallback model (default: `openai-codex/gpt-5.1-codex`).
-  - `CODEX_API_MODELS`: Comma-separated list of supported models. When set, `/v1/models` returns this list and unsupported models are rejected.
+  - `CODEX_API_MODEL`: Fallback model (default: `gpt-5.5`).
+  - `CODEX_API_MODELS`: Comma-separated list of supported models (default: `gpt-5.5,gpt-5.4,gpt-5.4-mini`). When set, `/v1/models` returns this list and unsupported models are rejected.
   - `CODEX_STREAM_IDLE_TIMEOUT_S`: Idle timeout for streaming (default: `90`).
   - `CODEX_MODELS_TIMEOUT_S`: Timeout for model discovery (default: `10`).

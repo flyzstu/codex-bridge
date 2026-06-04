@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 DEFAULT_CODEX_URL = "https://chatgpt.com/backend-api/codex/responses"
 DEFAULT_MODELS_URL = "https://api.openai.com/v1/models"
-DEFAULT_MODEL = "openai-codex/gpt-5.1-codex"
+DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_ORIGINATOR = "nanobot"
 
 
@@ -19,7 +19,7 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = 8000
     default_model: str = DEFAULT_MODEL
-    models: list[str] = field(default_factory=list)
+    models: list[str] = field(default_factory=lambda: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"])
     codex_url: str = DEFAULT_CODEX_URL
     models_url: str = DEFAULT_MODELS_URL
     stream_idle_timeout: float = 90.0
@@ -31,12 +31,25 @@ class Settings:
     def from_env(cls, **overrides: object) -> Settings:
         """Build settings from environment variables, with keyword overrides taking precedence."""
         models_raw = os.environ.get("CODEX_API_MODELS", "")
-        models = [m.strip() for m in models_raw.split(",") if m.strip()] if models_raw else []
+        if models_raw:
+            models = [m.strip() for m in models_raw.split(",") if m.strip()]
+        else:
+            models = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"]
+
+        models_override = overrides.get("models")
+        if models_override is not None:
+            models = list(models_override)
+
+        default_model = overrides.get("default_model")
+        if default_model is None:
+            default_model = os.environ.get("CODEX_API_MODEL")
+        if default_model is None:
+            default_model = models[0] if models else DEFAULT_MODEL
 
         defaults: dict[str, object] = {
             "host": os.environ.get("CODEX_API_HOST", "127.0.0.1"),
             "port": int(os.environ.get("CODEX_API_PORT", "8000")),
-            "default_model": os.environ.get("CODEX_API_MODEL", DEFAULT_MODEL),
+            "default_model": default_model,
             "models": models,
             "codex_url": os.environ.get("CODEX_API_CODEX_URL", DEFAULT_CODEX_URL),
             "models_url": os.environ.get("CODEX_API_MODELS_URL", DEFAULT_MODELS_URL),
