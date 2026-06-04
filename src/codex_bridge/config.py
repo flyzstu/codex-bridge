@@ -8,7 +8,8 @@ from dataclasses import dataclass, field
 
 DEFAULT_CODEX_URL = "https://chatgpt.com/backend-api/codex/responses"
 DEFAULT_MODELS_URL = "https://api.openai.com/v1/models"
-DEFAULT_MODEL = "gpt-5.5"
+DEFAULT_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"]
+DEFAULT_MODEL = DEFAULT_MODELS[0]
 DEFAULT_ORIGINATOR = "nanobot"
 
 
@@ -19,7 +20,7 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = 8000
     default_model: str = DEFAULT_MODEL
-    models: list[str] = field(default_factory=lambda: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"])
+    models: list[str] = field(default_factory=lambda: list(DEFAULT_MODELS))
     codex_url: str = DEFAULT_CODEX_URL
     models_url: str = DEFAULT_MODELS_URL
     stream_idle_timeout: float = 90.0
@@ -34,7 +35,7 @@ class Settings:
         if models_raw:
             models = [m.strip() for m in models_raw.split(",") if m.strip()]
         else:
-            models = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"]
+            models = list(DEFAULT_MODELS)
 
         models_override = overrides.get("models")
         if models_override is not None:
