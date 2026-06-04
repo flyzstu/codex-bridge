@@ -18,6 +18,7 @@ from .auth import CodexToken
 from .conversion import build_reasoning_options, convert_messages, convert_tools, strip_model_prefix
 
 DEFAULT_CODEX_URL = "https://chatgpt.com/backend-api/codex/responses"
+DEFAULT_MODELS_URL = "https://api.openai.com/v1/models"
 DEFAULT_MODEL = "openai-codex/gpt-5.1-codex"
 DEFAULT_ORIGINATOR = "nanobot"
 
@@ -57,6 +58,16 @@ def build_headers(token: CodexToken) -> dict[str, str]:
     }
 
 
+def build_models_headers(token: CodexToken) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token.access}",
+        "OpenAI-Beta": "responses=experimental",
+        "originator": DEFAULT_ORIGINATOR,
+        "User-Agent": "codex-openai-api (python)",
+        "accept": "application/json",
+    }
+
+
 def build_codex_body(payload: dict[str, Any], default_model: str) -> dict[str, Any]:
     model = str(payload.get("model") or default_model)
     instructions, input_items = convert_messages(payload["messages"])
@@ -87,12 +98,43 @@ class CodexClient:
         self,
         *,
         url: str = DEFAULT_CODEX_URL,
+        models_url: str = DEFAULT_MODELS_URL,
         token_provider: Callable[[], CodexToken | None],
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.url = url
+        self.models_url = models_url
         self.token_provider = token_provider
         self.transport = transport
+
+    async def list_models(self) -> list[str]:
+        token = await asyncio.to_thread(self.token_provider)
+        if token is None:
+            raise CodexAPIError("Codex OAuth token unavailable. Run `codex-openai-api login`.", 401)
+
+        timeout = float(os.environ.get("CODEX_MODELS_TIMEOUT_S", "10"))
+        async with httpx.AsyncClient(timeout=timeout, transport=self.transport) as client:
+            try:
+                response = await client.get(self.models_url, headers=build_models_headers(token))
+            except httpx.TimeoutException as exc:
+                raise CodexAPIError("OpenAI models request timed out", 504) from exc
+            except httpx.TransportError as exc:
+                raise CodexAPIError("OpenAI models request failed", 503) from exc
+
+        if response.status_code != 200:
+            await response.aread()
+            raise CodexAPIError(
+                f"OpenAI models request failed with HTTP {response.status_code}",
+                response.status_code,
+                response.headers.get("retry-after"),
+            )
+
+        payload = response.json()
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, list):
+            return []
+        models = [str(item["id"]) for item in data if isinstance(item, dict) and item.get("id")]
+        return sorted(dict.fromkeys(models))
 
     async def stream_events(self, body: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         token = await asyncio.to_thread(self.token_provider)

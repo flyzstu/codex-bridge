@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import uuid
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aiohttp import web
@@ -30,7 +32,7 @@ def create_app(
     default_model: str,
     codex_client: CodexClient | None = None,
 ) -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[request_logging_middleware])
     app[DEFAULT_MODEL_KEY] = default_model
     app[CODEX_CLIENT_KEY] = codex_client or CodexClient(token_provider=load_token)
     app.router.add_get("/health", health)
@@ -39,17 +41,70 @@ def create_app(
     return app
 
 
+@web.middleware
+async def request_logging_middleware(
+    request: web.Request,
+    handler: Callable[[web.Request], Awaitable[web.StreamResponse]],
+) -> web.StreamResponse:
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+    request["request_id"] = request_id
+    started = time.perf_counter()
+    status = 500
+    try:
+        response = await handler(request)
+        status = response.status
+        return response
+    except web.HTTPException as exc:
+        status = exc.status
+        raise
+    except Exception:
+        logger.exception(
+            "HTTP request failed: request_id={} method={} path={}",
+            request_id,
+            request.method,
+            request.path,
+        )
+        raise
+    finally:
+        duration_ms = (time.perf_counter() - started) * 1000
+        logger.info(
+            "HTTP request: request_id={} method={} path={} status={} duration_ms={:.1f} remote={}",
+            request_id,
+            request.method,
+            request.path,
+            status,
+            duration_ms,
+            request.remote or "-",
+        )
+
+
 async def health(request: web.Request) -> web.Response:
     _ = request
     return web.json_response({"status": "ok"})
 
 
 async def models(request: web.Request) -> web.Response:
-    model = request.app[DEFAULT_MODEL_KEY]
+    default_model = request.app[DEFAULT_MODEL_KEY]
+    client = request.app[CODEX_CLIENT_KEY]
     now = int(time.time())
+    try:
+        models = await client.list_models()
+    except CodexAPIError as exc:
+        logger.warning(
+            "OpenAI model discovery failed: request_id={} status={} fallback_model={}",
+            request.get("request_id", "-"),
+            exc.status_code,
+            default_model,
+        )
+        models = [default_model]
+    if not models:
+        models = [default_model]
     return web.json_response({
         "object": "list",
-        "data": [{"id": model, "object": "model", "created": now, "owned_by": "openai-codex"}],
+        "data": [
+            {"id": model, "object": "model", "created": now, "owned_by": "openai"}
+            for model in models
+        ],
     })
 
 
@@ -65,6 +120,14 @@ async def chat_completions(request: web.Request) -> web.StreamResponse:
         return error_response("invalid JSON request body", 400)
 
     model = str(payload.get("model") or request.app[DEFAULT_MODEL_KEY])
+    logger.info(
+        "Chat completion request: request_id={} model={} stream={} messages={} tools={}",
+        request.get("request_id", "-"),
+        model,
+        bool(payload.get("stream")),
+        len(payload.get("messages") or []),
+        len(payload.get("tools") or []),
+    )
     try:
         body = build_codex_body(payload, request.app[DEFAULT_MODEL_KEY])
         if bool(payload.get("stream")):

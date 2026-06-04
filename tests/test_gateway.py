@@ -100,6 +100,27 @@ async def test_models_endpoint(test_client) -> None:
     assert payload["data"][0]["id"] == DEFAULT_MODEL
 
 
+async def test_models_endpoint_uses_openai_models(test_client) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        return httpx.Response(200, json={
+            "object": "list",
+            "data": [
+                {"id": "gpt-5.1-codex"},
+                {"id": "gpt-5.1"},
+                {"id": "gpt-5.1-codex"},
+            ],
+        })
+
+    client = await test_client(client_for(handler))
+
+    response = await client.get("/v1/models")
+
+    assert response.status == 200
+    payload = await response.json()
+    assert [model["id"] for model in payload["data"]] == ["gpt-5.1", "gpt-5.1-codex"]
+
+
 async def test_non_streaming_codex_sse_aggregates_to_chat_completion(test_client) -> None:
     captured: dict[str, object] = {}
 
@@ -247,3 +268,31 @@ async def test_logs_do_not_include_prompt_or_token() -> None:
     rendered = "\n".join(logs)
     assert "secret prompt" not in rendered
     assert "token-test" not in rendered
+
+
+async def test_request_logs_include_metadata_without_prompt(test_client) -> None:
+    logs: list[str] = []
+    sink_id = logger.add(logs.append)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=sse(
+            {"type": "response.output_text.delta", "delta": "ok"},
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ))
+
+    try:
+        client = await test_client(client_for(handler))
+        response = await client.post("/v1/chat/completions", json={
+            "model": DEFAULT_MODEL,
+            "messages": [{"role": "user", "content": "secret prompt"}],
+        })
+    finally:
+        logger.remove(sink_id)
+
+    assert response.status == 200
+    rendered = "\n".join(logs)
+    assert "HTTP request:" in rendered
+    assert "Chat completion request:" in rendered
+    assert "model=openai-codex/gpt-5.1-codex" in rendered
+    assert "messages=1" in rendered
+    assert "secret prompt" not in rendered
