@@ -196,7 +196,7 @@ async def stream_chat_completion(
     client = request.app[CODEX_CLIENT_KEY]
     token = await asyncio.to_thread(client.token_provider)
     if token is None:
-        raise CodexAPIError("Codex OAuth token unavailable. Run `codex-openai-api login`.", 401)
+        raise CodexAPIError("Codex OAuth token unavailable. Run `codex-bridge login`.", 401)
 
     completion_id = make_completion_id()
     created = int(time.time())

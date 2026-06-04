@@ -47,7 +47,7 @@ def build_headers(token: CodexToken, originator: str = DEFAULT_ORIGINATOR) -> di
         "chatgpt-account-id": token.account_id,
         "OpenAI-Beta": "responses=experimental",
         "originator": originator,
-        "User-Agent": "codex-openai-api (python)",
+        "User-Agent": "codex-bridge (python)",
         "accept": "text/event-stream",
         "content-type": "application/json",
     }
@@ -58,7 +58,7 @@ def build_models_headers(token: CodexToken, originator: str = DEFAULT_ORIGINATOR
         "Authorization": f"Bearer {token.access}",
         "OpenAI-Beta": "responses=experimental",
         "originator": originator,
-        "User-Agent": "codex-openai-api (python)",
+        "User-Agent": "codex-bridge (python)",
         "accept": "application/json",
     }
 
@@ -107,7 +107,7 @@ class CodexClient:
     async def list_models(self) -> list[str]:
         token = await asyncio.to_thread(self.token_provider)
         if token is None:
-            raise CodexAPIError("Codex OAuth token unavailable. Run `codex-openai-api login`.", 401)
+            raise CodexAPIError("Codex OAuth token unavailable. Run `codex-bridge login`.", 401)
 
         try:
             response = await self._client.get(
@@ -138,7 +138,7 @@ class CodexClient:
     async def stream_events(self, body: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         token = await asyncio.to_thread(self.token_provider)
         if token is None:
-            raise CodexAPIError("Codex OAuth token unavailable. Run `codex-openai-api login`.", 401)
+            raise CodexAPIError("Codex OAuth token unavailable. Run `codex-bridge login`.", 401)
 
         try:
             async with self._client.stream(

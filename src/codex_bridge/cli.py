@@ -1,4 +1,4 @@
-"""Command-line interface for codex-openai-api."""
+"""Command-line interface for codex-bridge."""
 
 from __future__ import annotations
 

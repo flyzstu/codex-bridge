@@ -8,11 +8,11 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from loguru import logger
 
-from codex_openai_api.auth import CodexToken
-from codex_openai_api.codex import CodexClient, build_codex_body, iter_sse
-from codex_openai_api.config import Settings
-from codex_openai_api.conversion import convert_messages, strip_model_prefix
-from codex_openai_api.server import create_app
+from codex_bridge.auth import CodexToken
+from codex_bridge.codex import CodexClient, build_codex_body, iter_sse
+from codex_bridge.config import Settings
+from codex_bridge.conversion import convert_messages, strip_model_prefix
+from codex_bridge.server import create_app
 
 DEFAULT_MODEL = "openai-codex/gpt-5.1-codex"
 

@@ -1,4 +1,4 @@
-"""Centralised configuration for codex-openai-api."""
+"""Centralised configuration for codex-bridge."""
 
 from __future__ import annotations
 

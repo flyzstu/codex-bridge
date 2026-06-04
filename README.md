@@ -1,4 +1,4 @@
-# codex-openai-api
+# codex-bridge
 
 OpenAI-compatible local gateway for OpenAI Codex OAuth.
 
@@ -19,13 +19,13 @@ pip install -e .
 ## Login
 
 ```bash
-codex-openai-api login
+codex-bridge login
 ```
 
 ## Serve
 
 ```bash
-codex-openai-api serve --host 127.0.0.1 --port 8000
+codex-bridge serve --host 127.0.0.1 --port 8000
 ```
 
 ### Specifying supported models
@@ -35,7 +35,7 @@ When configured, `/v1/models` returns this list directly (no upstream API call) 
 for unlisted models are rejected with `400 Bad Request`.
 
 ```bash
-codex-openai-api serve --models "gpt-5.1-codex,gpt-5.1,o3-pro"
+codex-bridge serve --models "gpt-5.1-codex,gpt-5.1,o3-pro"
 ```
 
 If `--models` is omitted, the gateway discovers available models from the OpenAI API at

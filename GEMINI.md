@@ -1,4 +1,4 @@
-# codex-openai-api
+# codex-bridge
 
 OpenAI-compatible local gateway for OpenAI Codex OAuth. This project acts as a bridge, converting OpenAI Chat Completions requests into Codex Responses API calls and streaming the results back in an OpenAI-compatible format.
 
@@ -6,12 +6,12 @@ OpenAI-compatible local gateway for OpenAI Codex OAuth. This project acts as a b
 
 - **Core Technologies:** Python 3.11+, aiohttp (server), httpx (client), Typer (CLI), Loguru (logging).
 - **Architecture:**
-  - `src/codex_openai_api/config.py`: Centralised `Settings` dataclass for all configuration (env vars, CLI flags).
-  - `src/codex_openai_api/server.py`: aiohttp-based HTTP server exposing OpenAI-compatible endpoints (`/v1/chat/completions`, `/v1/models`).
-  - `src/codex_openai_api/codex.py`: Client for the upstream Codex Responses API, including SSE parsing and state management. Uses a shared `httpx.AsyncClient` connection pool.
-  - `src/codex_openai_api/conversion.py`: Logic for mapping between OpenAI and Codex message formats and tool calls.
-  - `src/codex_openai_api/cli.py`: Command-line interface for serving the gateway and managing authentication.
-  - `src/codex_openai_api/auth.py`: OAuth flow and token management (uses `oauth-cli-kit`).
+  - `src/codex_bridge/config.py`: Centralised `Settings` dataclass for all configuration (env vars, CLI flags).
+  - `src/codex_bridge/server.py`: aiohttp-based HTTP server exposing OpenAI-compatible endpoints (`/v1/chat/completions`, `/v1/models`).
+  - `src/codex_bridge/codex.py`: Client for the upstream Codex Responses API, including SSE parsing and state management. Uses a shared `httpx.AsyncClient` connection pool.
+  - `src/codex_bridge/conversion.py`: Logic for mapping between OpenAI and Codex message formats and tool calls.
+  - `src/codex_bridge/cli.py`: Command-line interface for serving the gateway and managing authentication.
+  - `src/codex_bridge/auth.py`: OAuth flow and token management (uses `oauth-cli-kit`).
 
 ## Building and Running
 
@@ -24,12 +24,12 @@ pip install -e ".[dev]"
 
 ### Authentication
 ```bash
-codex-openai-api login
+codex-bridge login
 ```
 
 ### Running the Gateway
 ```bash
-codex-openai-api serve --host 127.0.0.1 --port 8000
+codex-bridge serve --host 127.0.0.1 --port 8000
 ```
 
 ### Testing
