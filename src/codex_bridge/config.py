@@ -25,6 +25,7 @@ class Settings:
     stream_idle_timeout: float = 90.0
     models_timeout: float = 10.0
     originator: str = DEFAULT_ORIGINATOR
+    log_level: str = "INFO"
 
     @classmethod
     def from_env(cls, **overrides: object) -> Settings:
@@ -41,6 +42,7 @@ class Settings:
             "models_url": os.environ.get("CODEX_API_MODELS_URL", DEFAULT_MODELS_URL),
             "stream_idle_timeout": float(os.environ.get("CODEX_STREAM_IDLE_TIMEOUT_S", "90")),
             "models_timeout": float(os.environ.get("CODEX_MODELS_TIMEOUT_S", "10")),
+            "log_level": os.environ.get("CODEX_LOG_LEVEL", "INFO").upper(),
         }
         defaults.update({k: v for k, v in overrides.items() if v is not None})
         return cls(**defaults)  # type: ignore[arg-type]

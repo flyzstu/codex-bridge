@@ -377,7 +377,7 @@ async def test_logs_do_not_include_prompt_or_token() -> None:
 
 async def test_request_logs_include_metadata_without_prompt(test_client) -> None:
     logs: list[str] = []
-    sink_id = logger.add(logs.append)
+    sink_id = logger.add(logs.append, level="INFO")
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=sse(
@@ -401,3 +401,33 @@ async def test_request_logs_include_metadata_without_prompt(test_client) -> None
     assert "model=openai-codex/gpt-5.1-codex" in rendered
     assert "messages=1" in rendered
     assert "secret prompt" not in rendered
+
+
+async def test_request_logs_include_prompt_in_debug_mode(test_client) -> None:
+    logs: list[str] = []
+    sink_id = logger.add(logs.append, level="DEBUG")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=sse(
+            {"type": "response.output_text.delta", "delta": "ok"},
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ))
+
+    try:
+        client = await test_client(client_for(handler))
+        response = await client.post("/v1/chat/completions", json={
+            "model": DEFAULT_MODEL,
+            "messages": [{"role": "user", "content": "secret prompt"}],
+        })
+    finally:
+        logger.remove(sink_id)
+
+    assert response.status == 200
+    rendered = "\n".join(logs)
+    assert "HTTP request:" in rendered
+    assert "Chat completion request:" in rendered
+    assert "model=openai-codex/gpt-5.1-codex" in rendered
+    assert "messages=1" in rendered
+    assert "Chat completion payload: request_id=" in rendered
+    assert "Codex request body:" in rendered
+    assert "secret prompt" in rendered

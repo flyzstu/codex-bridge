@@ -149,6 +149,11 @@ async def chat_completions(request: web.Request) -> web.StreamResponse:
         len(payload.get("messages") or []),
         len(payload.get("tools") or []),
     )
+    logger.debug(
+        "Chat completion payload: request_id={} payload={}",
+        request.get("request_id", "-"),
+        json.dumps(payload, ensure_ascii=False),
+    )
     try:
         body = build_codex_body(payload, settings.default_model)
         if bool(payload.get("stream")):

@@ -7,6 +7,7 @@ import json
 import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any
 
 import httpx
@@ -133,12 +134,16 @@ class CodexClient:
         if not isinstance(data, list):
             return []
         models = [str(item["id"]) for item in data if isinstance(item, dict) and item.get("id")]
-        return sorted(dict.fromkeys(models))
+        result = sorted(dict.fromkeys(models))
+        logger.debug("Model discovery result: {}", result)
+        return result
 
     async def stream_events(self, body: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         token = await asyncio.to_thread(self.token_provider)
         if token is None:
             raise CodexAPIError("Codex OAuth token unavailable. Run `codex-bridge login`.", 401)
+
+        logger.debug("Codex request body: {}", json.dumps(body, ensure_ascii=False))
 
         try:
             async with self._client.stream(
